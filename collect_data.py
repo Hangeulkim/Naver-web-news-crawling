@@ -36,26 +36,30 @@ filepath=""
 year=""
 month=""
 day=""
-con=sqlite3.connect("E:/data/data.db")
+con=sqlite3.connect("data.db",isolation_level=None)
 cur=con.cursor()
 titlenum=0
-
+headers = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36" }
+err_dict=[]
 
 def get_links(title):
+    global filepath
+    
     print("start get_links"+'\n'+startdate+'\n'+names[titlenum])
     
     pages = set()
     links_get = set()
 
-    if os.path.exists(filepath+"/complitment.txt"):
-        f_read=open(filepath+"/complitment.txt","r")
-   
+    if not os.path.exists(filepath+"/save.txt"):
+        f_read=open(filepath+"/save.txt","w")
+        f_read.close()
 
+    
     pagenum=1
     
     while True:
         pages.add(title+"&date="+startdate+"&page="+str(pagenum))
-        r=requests.get(title+"&date="+startdate+"&page="+str(pagenum))
+        r=requests.get(title+"&date="+startdate+"&page="+str(pagenum),headers=headers)
         r.encoding='euc-kr'
         html=r.text
         bsobject=BeautifulSoup(html,"lxml")
@@ -73,75 +77,88 @@ def get_links(title):
             pagenum+=10
    
     for page in pages:
-        r=requests.get(page)
+        r=requests.get(page,headers=headers)
         r.encoding='euc-kr'
         html=r.text
         bsobject=BeautifulSoup(html,"lxml")
         for link in bsobject.find('div',{'class' : "list_body newsflash_body"}).find_all('a'):
             links_get.add(link.get('href'))
 
-    f_plus=open(filepath+"/complitment.txt","a")
-    f_read=open(filepath+"/complitment.txt","r")
+    f_read=open(filepath+"/save.txt","r")
     delete_list=[]
     already_list=f_read.readlines()
 
     for link in links_get:
-        if link+'\n' not in already_list:
-            f_plus.write(link+"\n")
-        else:
+        if link+'\n' in already_list:
             delete_list+=[link]
+            
             
     
     for del_mem in delete_list:
         links_get.remove(del_mem)
 
     f_read.close()
-    f_plus.close()
     print("get_links end\n\n")
     return links_get
 
+def re_run_error(where,title):
+    print("start err_links"+'\n'+where)
+    
+    pages = set()
+    links_get = set()
+
+    f_read=open(where+"/error.txt","r")
+    links_get=f_read.readlines()
+    f_read.close()
+    os.remove(where+"/error.txt","r")
+    return links_get
+
+    
 
 def get_content(link_get):
 ##    print("start get_content")
     
 
-    r=requests.get(link_get)
+    r=requests.get(link_get,headers=headers)
     r.encoding='EUC-KR'
     html=r.text
     bsobject=BeautifulSoup(html,"lxml")
-
+    
     if bsobject.find('meta',{'property':"og:url"}) == None:
+        print('url error')
+        print(link_get)
         return None
-    if "http://news.naver.com/" not in str(bsobject.find('meta',{'property':"og:url"}).get('content')):
+    if "news.naver.com" not in str(bsobject.find('meta',{'property':"og:url"}).get('content')):
+        print(str(bsobject.find('meta',{'property':"og:url"}).get('content')))
+        print('content error')
+        print(link_get)
         return None
     if bsobject.find('h1',{'class' : "error_title"}) != None:
+        print('error title')
+        print(link_get)
         return None
 
     text=get_text(bsobject,link_get)
-    text[0] = re.sub('[-=+,#/\?:^$.@*\"※~&%ㆍ!』\\‘|\(\)\[\]\<\>`\'…》’“”]', ' ', text[0])
-    text[0]=re.sub('\r|\n|\'|\"',' ',text[0],0,re.I|re.S)
-    text[0]=re.sub(' +'," ",text[0],0,re.I|re.S)
 
     time.sleep(3)
 
 ##    print("end get_content")
-##    return text
-    if text != None:
-        save_text(text)
+    return text
 
 
 def get_text(bsobject,link):
+    global cur
     #print("start get_text")
 
     try:
         title=bsobject.find('meta',{'property' : "og:title"}).get('content')
         filetitle=re.sub('…|·|\\x1e',' ',title,0)
         filetitle=filetitle.replace('\\','')
-        filetitle = re.sub('[-=+,#/\?:^$.@*\"※~&%ㆍ!』\\‘|\(\)\[\]\<\>`\'…》’“”·]', ' ', filetitle,0,re.I|re.S)
+        filetitle=re.sub('\<|\>|\(|\)|\[|\]','\n',filetitle,0,re.I|re.S)
+        filetitle=re.sub('\r','\n',filetitle,0,re.I|re.S)
+        filetitle=re.sub(' +|\t',' ',filetitle,0,re.I|re.S)
+        filetitle=re.sub('[^A-Za-z0-9가-힣]| |\n', '', filetitle)
         filetitle=re.sub('단독|Hot Line|fnRASSI|e공시|ET투자뉴스|I 리포트','',filetitle)
-        filetitle=re.sub('\n|\t',' ',filetitle,0)
-        filetitle=re.sub(' +',' ',filetitle,0)
-        filetitle=re.sub('/','-',filetitle,0)
         if len(filetitle)==0:
             tmp_time=datetime.datetime.strptime(bsobject.find('span',{'class' : "t11"}).text,"%Y-%m-%d %H:%M")
             filetitle=tmp_time.strftime("%Y-%m-%d %H-%M")
@@ -158,13 +175,15 @@ def get_text(bsobject,link):
 
         news=str(bsobject.find('div',{'id' : "articleBodyContents"}))
         news=re.sub('//.*\}','',news,0,re.I|re.S)
+        news=news.replace('<br/>','\n')
         news=news.replace(newscom,'')
         news=news.replace(string,'')
-        news=re.sub('<br/>','\n',news,0,re.I|re.S)
-        news=re.sub('<.+?>|▶.*|[a-zA-Z0-9+-_.]+@.*|\"|\'|◆|\a0|■|-|▲|©.*','',news,0,re.I|re.S)
+        news=re.sub('<.*>|\(.*\)|\[.*\]','\n',news,0,re.I|re.S)
         news=re.sub('\r','\n',news,0,re.I|re.S)
-        news=re.sub('\(.+?\)|\[*\]|/|\[|\]|\=|◇|△|\(|;','',news,0,re.I|re.S)
         news=re.sub(' +|\t',' ',news,0,re.I|re.S)
+        news=re.sub('[^A-Za-z0-9가-힣]| |\n', '', news)
+        
+        
 
         get_time=bsobject.find('span',{'class' : "t11"}).text
 
@@ -173,23 +192,18 @@ def get_text(bsobject,link):
 
 
         #print("end get_text")
+        cur.execute("INSERT INTO NEWS VALUES(?,?,?,?,?,?,?)",(filetitle,startdate,year,month,day,names[titlenum],news))
         return [filetitle+" "+news,[filetitle,f]]
-
-    except http_incompleteRead:
-        raise http_incompleteRead
-
-    except urllib3_incompleteRead:
-        raise urllib3_incompleteRead
     
     except Exception:
-        return [link,[str(traceback.format_exc().strip())+'\n'+link,link]]
+        raise Exception
 
 
 
 
 def save_text(text):
-    f=open(filepath+"/"+text[0]+".txt","w",encoding='UTF-8')
-    f.write(text[1])
+    f=open(filepath+"/"+text[1][0]+".txt","w",encoding='UTF-8')
+    f.write(text[1][1])
     f.close()
 
 
@@ -213,9 +227,10 @@ def get_data(text):
         
 
 def save_sql(alldata):
+    global cur
     delli=[]
     for word, val in alldata.items():
-        if(int(val)<30):
+        if(int(val)<10):
             delli+=[word]
 
 
@@ -238,18 +253,19 @@ if __name__=='__main__':
     starttime=time.time()
     pool = Pool(processes=cpu_count()*2)
     listkslist=set()
-    start_time=datetime.datetime.strptime(input("시작 날짜 (년월일)\nex:)20190311 : "),"%Y%m%d")
-    end_time=datetime.datetime.strptime(input("종료 날짜 (년월일)\nex:)20190315 : "),"%Y%m%d")
+    start_time=datetime.datetime.strptime("20120101","%Y%m%d")
+    end_time=datetime.datetime.now()
 
 
     if(start_time > end_time):#시작날짜가 작도록만듬 start~end로 조
         start_time, end_time = end_time, start_time
 
         
-    #cur.execute("CREATE TABLE IF NOT Exists data(Word text, Frequency integer, Date date, Year text, Month text, Day text, Area text);")
+    cur.execute("CREATE TABLE IF NOT Exists data(Word text, Frequency integer, Date date, Year text, Month text, Day text, Area text);")
+    cur.execute("CREATE TABLE IF NOT Exists News(Title text, Date date, Year text, Month text, Day text, Area text,Cont text);")
 
-    if os.path.isfile("E:/data/error.txt"):
-        os.remove("E:/data/error.txt")
+    if os.path.isfile("error.txt"):
+        os.remove("error.txt")
 
     while True:
         titlenum=0
@@ -258,80 +274,64 @@ if __name__=='__main__':
         month=startdate[4:6]
         day=startdate[6:8]
 
-        for titles in links:
+        
+
+        for titles in range(len(links)):
+            titlenum=titles
+            con=sqlite3.connect("data.db",isolation_level=None)
+            cur=con.cursor()
             time_flag=False
-            filepath="E:/data/"+year+"/"+month+"/"+day+"/"+names[titlenum]
+            filepath="data/"+year+"/"+month+"/"+day+"/"+names[titlenum]
 
             if not(os.path.isdir(filepath)):
                 os.makedirs(filepath)
 
             
             try:
-                linkslist=get_links(titles)
-##                pool.map(get_content,linkslist)
-##                alltext=[]
-##                alltext+=pool.map(get_content,linkslist)
-##                alldata=Counter()
-##
-##            
-##                for text in alltext:
-##                    if text == None:
-##                        continue
-##                    save_text(text[1])
-##                    alldata+=get_data(text[0])
+                linkslist=get_links(links[titles])
+                pool.map(get_content,linkslist)
+                alltext=[]
+                alltext+=pool.map(get_content,linkslist)
+                alldata=Counter()
+                
+                for text in alltext:
+                    if text == None:
+                        continue
+                    save_text(text)
+                    alldata+=get_data(text[0])
+                    
+                    f=open(filepath+"/save.txt","w")
+                    
+                for link in linkslist:
+                    f.write(link+"\n")
+                f.close()
+                
+                save_sql(dict(alldata))
+                con.close()
 
-            except requests.exceptions.ConnectionError:
-                time.sleep(600)
-                os.remove(filepath+"/complitment.txt")
-                titlenum-=1
-                continue
-
-
-            except http_incompleteRead:
-                time.sleep(600)
-                os.remove(filepath+"/complitment.txt")
-                titlenum-=1
-                continue
-
-            except urllib3_incompleteRead:
-                time.sleep(600)
-                os.remove(filepath+"/complitment.txt")
-                titlenum-=1
-                continue
                 
             except Exception as e:
-                print(type(e))
                 print(e.args)
                 print(e)
 
                 traceback.print_exc()
-                
-                print('\n\n\n\n'+names[titlenum]+'\n\n\n\n')
-                os.remove(filepath+"/complitment.txt")
 
-                
-                f=open("E:/data/error.txt",'a')
+                f=open("error.txt",'a')
                 f.write(str(traceback.format_exc()))
                 f.write("\n\n\n"+startdate+"\n\n\n"+names[titlenum]+"\n\n\n\n\n")
                 f.close()
-                titlenum+=1
+                titles-=1
+                con.close()
+                time.sleep(300)
                 continue
             
-
-
-##            save_sql(dict(alldata))
-##
-##            con.commit()
-            titlenum+=1
 
 
         start_time+=datetime.timedelta(days=1)
         if(start_time>end_time):
             break
-                
-##    chg_to_txt()
-##    cur.close()
-##    con.close()
+        
+    
     print("--- %s seconds ---" %(time.time() - starttime))
     
 
