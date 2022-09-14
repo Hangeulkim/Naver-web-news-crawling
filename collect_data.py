@@ -60,7 +60,7 @@ def get_links(title):
     while True:
         pages.add(title+"&date="+startdate+"&page="+str(pagenum))
         r=requests.get(title+"&date="+startdate+"&page="+str(pagenum),headers=headers)
-        r.encoding='euc-kr'
+        r.encoding='UTF-8'
         html=r.text
         bsobject=BeautifulSoup(html,"lxml")
         
@@ -78,7 +78,7 @@ def get_links(title):
    
     for page in pages:
         r=requests.get(page,headers=headers)
-        r.encoding='euc-kr'
+        r.encoding='UTF-8'
         html=r.text
         bsobject=BeautifulSoup(html,"lxml")
         for link in bsobject.find('div',{'class' : "list_body newsflash_body"}).find_all('a'):
@@ -118,32 +118,34 @@ def re_run_error(where,title):
 def get_content(link_get):
 ##    print("start get_content")
     
+    try:
+        r=requests.get(link_get,headers=headers)
+        r.encoding='UTF-8'
+        html=r.text
+        bsobject=BeautifulSoup(html,"lxml")
 
-    r=requests.get(link_get,headers=headers)
-    r.encoding='EUC-KR'
-    html=r.text
-    bsobject=BeautifulSoup(html,"lxml")
-    
-    if bsobject.find('meta',{'property':"og:url"}) == None:
-        print('url error')
-        print(link_get)
-        return None
-    if "news.naver.com" not in str(bsobject.find('meta',{'property':"og:url"}).get('content')):
-        print(str(bsobject.find('meta',{'property':"og:url"}).get('content')))
-        print('content error')
-        print(link_get)
-        return None
-    if bsobject.find('h1',{'class' : "error_title"}) != None:
-        print('error title')
-        print(link_get)
-        return None
+        if bsobject.find('meta',{'property':"og:url"}) == None:
+            print('url error')
+            print(link_get)
+            return [-1,link_get]
+        if "news.naver.com" not in str(bsobject.find('meta',{'property':"og:url"}).get('content')):
+            print(str(bsobject.find('meta',{'property':"og:url"}).get('content')))
+            print('content error')
+            print(link_get)
+            return [-1,link_get]
+        if bsobject.find('h1',{'class' : "error_title"}) != None:
+            print('error title')
+            print(link_get)
+            return [-1,link_get]
 
-    text=get_text(bsobject,link_get)
+        text=get_text(bsobject,link_get)
 
-    time.sleep(3)
+        time.sleep(3)
 
 ##    print("end get_content")
-    return text
+        return text
+    except MaxRetryError, NewConnectionError:
+        raise MaxRetryError
 
 
 def get_text(bsobject,link):
@@ -151,51 +153,82 @@ def get_text(bsobject,link):
     #print("start get_text")
 
     try:
-        title=bsobject.find('meta',{'property' : "og:title"}).get('content')
-        filetitle=re.sub('…|·|\\x1e',' ',title,0)
-        filetitle=filetitle.replace('\\','')
-        filetitle=re.sub('\<|\>|\(|\)|\[|\]','\n',filetitle,0,re.I|re.S)
-        filetitle=re.sub('\r','\n',filetitle,0,re.I|re.S)
-        filetitle=re.sub(' +|\t',' ',filetitle,0,re.I|re.S)
-        filetitle=re.sub('[^A-Za-z0-9가-힣]| |\n', '', filetitle)
-        filetitle=re.sub('단독|Hot Line|fnRASSI|e공시|ET투자뉴스|I 리포트','',filetitle)
+        title=str(bsobject.find('meta',{'name' : "twitter:title"}).get('content'))
+        if(title == None):
+            print(title)
+            return [-1, link]
+        filetitle = re.sub('…|·|\\x1e', ' ', title, 0)
+        filetitle = filetitle.replace('\\', '')
+        filetitle = re.sub('\<|\>|\(|\)|\[|\]', '\n', filetitle, 0, re.I | re.S)
+        filetitle = re.sub('\r', '\n', filetitle, 0, re.I | re.S)
+        filetitle = re.sub(' +|\t', ' ', filetitle, 0, re.I | re.S)
+        filetitle = re.sub('[^A-Za-z0-9가-힣]| |\n', '', filetitle)
+        filetitle = re.sub('단독|Hot Line|fnRASSI|e공시|ET투자뉴스|I 리포트', '', filetitle)
         if len(filetitle)==0:
-            tmp_time=datetime.datetime.strptime(bsobject.find('span',{'class' : "t11"}).text,"%Y-%m-%d %H:%M")
-            filetitle=tmp_time.strftime("%Y-%m-%d %H-%M")
+            return [-1,link]
+            
+                            
+                
         filetitle=filetitle.strip()
         
+        newscom=""
+        if bsobject.find('meta',{'property' : "twitter:creator"})!=None:
+            newscom=bsobject.find('meta',{'property' : "twitter:creator"}).get('content')
+            
 
-        newscom=bsobject.find('meta',{'property' : "me2:category1"}).get('content')
-    
-
-        whos=str(bsobject.find('div',{'id' : "articleBodyContents"}))
+        whos=str(bsobject.find('div',{'id' : "dic_area"}))
+        if whos == None:
+            return [-1,link]
         who=whos.rfind("기자")
         string=whos[who-4:who+2]
         stringsub=re.sub('\/| |\n|\r|\.|\>|\]','',string,0)
 
-        news=str(bsobject.find('div',{'id' : "articleBodyContents"}))
+        news=str(bsobject.find('div',{'id' : "dic_area"}))
         news=re.sub('//.*\}','',news,0,re.I|re.S)
         news=news.replace('<br/>','\n')
         news=news.replace(newscom,'')
         news=news.replace(string,'')
-        news=re.sub('<.*>|\(.*\)|\[.*\]','\n',news,0,re.I|re.S)
+        news=re.sub('<.*>|\(.*\)|\[.*\]','',news)
         news=re.sub('\r','\n',news,0,re.I|re.S)
+        news=re.sub('\n+','\n',news,0,re.I|re.S)
         news=re.sub(' +|\t',' ',news,0,re.I|re.S)
         news=re.sub('[^A-Za-z0-9가-힣]| |\n', '', news)
+        news=re.sub('lt|gt','',news)
         
-        
+        get_time=""
+        if bsobject.find('span',{'class' : "t11"}) != None:
+            get_time=bsobject.find('span',{'class' : "t11"}).text
+            
+        else:
+            get_time=bsobject.find('span',{'class' : "media_end_head_info_datestamp_time _ARTICLE_DATE_TIME"})
+            if get_time != None:
+                get_time=get_time.text
 
-        get_time=bsobject.find('span',{'class' : "t11"}).text
+        if(filetitle == None or newscom == None or stringsub == None or get_time == None):
+            return [-1,link]
 
-
-        f=(filetitle+news+'\n\n\n'+newscom+'\n\n'+stringsub+'\n\n'+link+'\n\n'+get_time)
+        f=(filetitle+'\n\n'+news+'\n\n\n'+newscom+'\n\n'+stringsub+'\n\n'+link+'\n\n'+get_time)
 
 
         #print("end get_text")
         cur.execute("INSERT INTO NEWS VALUES(?,?,?,?,?,?,?)",(filetitle,startdate,year,month,day,names[titlenum],news))
-        return [filetitle+" "+news,[filetitle,f]]
-    
-    except Exception:
+        return [filetitle+" "+news,[filetitle,f],link]
+
+
+
+    except AttributeError as e:
+        f=open("error.txt",'a')
+        f.write(str(traceback.format_exc()))
+        print(str(traceback.format_exc()))
+        f.close()
+        
+        return [-1,link]
+
+    except Exception as e:
+        f = open("error.txt", 'a')
+        f.write(link + "\n\n")
+        f.close()
+
         raise Exception
 
 
@@ -257,7 +290,7 @@ if __name__=='__main__':
     end_time=datetime.datetime.now()
 
 
-    if(start_time > end_time):#시작날짜가 작도록만듬 start~end로 조
+    if(start_time > end_time):
         start_time, end_time = end_time, start_time
 
         
@@ -275,8 +308,8 @@ if __name__=='__main__':
         day=startdate[6:8]
 
         
-
-        for titles in range(len(links)):
+        titles=0
+        while titles < len(links):
             titlenum=titles
             con=sqlite3.connect("data.db",isolation_level=None)
             cur=con.cursor()
@@ -289,18 +322,37 @@ if __name__=='__main__':
             
             try:
                 linkslist=get_links(links[titles])
+                titles+=1
+                if(len(linkslist)==0):
+                    continue
                 pool.map(get_content,linkslist)
                 alltext=[]
                 alltext+=pool.map(get_content,linkslist)
                 alldata=Counter()
                 
                 for text in alltext:
-                    if text == None:
+                    if text is None:
                         continue
-                    save_text(text)
+                    if text[0] == -1:
+                        f=open(filepath+"/save.txt","a")
+                        f.write(text[1]+"\n")
+                        f.close()
+                        continue
+                    try:
+                        save_text(text)
+                    except Exception as e:
+                        print(e.args)
+                        print(e)
+
+                        traceback.print_exc()
+
+                        f=open("error.txt",'a')
+                        f.write(str(traceback.format_exc()))
+                        f.write("\n\n\n"+startdate+"\n\n\n"+names[titlenum]+"\n\n\n"+text[2]+"\n\n\n\n\n")
+                        f.close()
                     alldata+=get_data(text[0])
                     
-                    f=open(filepath+"/save.txt","w")
+                f=open(filepath+"/save.txt","a")
                     
                 for link in linkslist:
                     f.write(link+"\n")
@@ -310,7 +362,7 @@ if __name__=='__main__':
                 con.close()
 
                 
-            except Exception as e:
+            except MaxRetryError as e:
                 print(e.args)
                 print(e)
 
