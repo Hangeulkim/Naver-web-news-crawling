@@ -144,7 +144,10 @@ def get_content(link_get):
 
 ##    print("end get_content")
         return text
-    except MaxRetryError, NewConnectionError:
+    except MaxRetryError:
+        raise MaxRetryError
+
+    except NewConnectionError:
         raise MaxRetryError
 
 
