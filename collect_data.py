@@ -3,6 +3,7 @@
 import sqlite3
 import requests
 from bs4 import BeautifulSoup
+import urllib3
 import re
 import datetime
 import time
@@ -144,11 +145,17 @@ def get_content(link_get):
 
 ##    print("end get_content")
         return text
-    except MaxRetryError:
-        raise MaxRetryError
+    except urllib3.exceptions.MaxRetryError as e:
+        print(e.args)
+        print(e)
 
-    except NewConnectionError:
-        raise MaxRetryError
+        traceback.print_exc()
+
+        f = open("error.txt", 'a')
+        f.write(str(traceback.format_exc()))
+        f.write("\n\n\n" + startdate + "\n\n\n" + link_get + "\n\n\n\n\n")
+        f.close()
+        raise urllib3.exceptions.MaxRetryError
 
 
 def get_text(bsobject,link):
@@ -328,7 +335,7 @@ if __name__=='__main__':
                 titles+=1
                 if(len(linkslist)==0):
                     continue
-                pool.map(get_content,linkslist)
+
                 alltext=[]
                 alltext+=pool.map(get_content,linkslist)
                 alldata=Counter()
@@ -365,7 +372,7 @@ if __name__=='__main__':
                 con.close()
 
                 
-            except MaxRetryError as e:
+            except urllib3.exceptions.MaxRetryError as e:
                 print(e.args)
                 print(e)
 
@@ -377,7 +384,7 @@ if __name__=='__main__':
                 f.close()
                 titles-=1
                 con.close()
-                time.sleep(300)
+                time.sleep(420)
                 continue
             
 
