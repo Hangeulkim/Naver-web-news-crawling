@@ -158,6 +158,19 @@ def get_content(link_get):
         raise urllib3.exceptions.MaxRetryError
 
 
+    except requests.exceptions.ConnectionError as e:
+        print(e.args)
+        print(e)
+
+        traceback.print_exc()
+
+        f = open("error.txt", 'a')
+        f.write(str(traceback.format_exc()))
+        f.write("\n\n\n" + startdate + "\n\n\n" + link_get + "\n\n\n\n\n")
+        f.close()
+        raise requests.exceptions.ConnectionError
+
+
 def get_text(bsobject,link):
     global cur
     #print("start get_text")
@@ -373,6 +386,21 @@ if __name__=='__main__':
 
                 
             except urllib3.exceptions.MaxRetryError as e:
+                print(e.args)
+                print(e)
+
+                traceback.print_exc()
+
+                f=open("error.txt",'a')
+                f.write(str(traceback.format_exc()))
+                f.write("\n\n\n"+startdate+"\n\n\n"+names[titlenum]+"\n\n\n\n\n")
+                f.close()
+                titles-=1
+                con.close()
+                time.sleep(420)
+                continue
+
+            except requests.exceptions.ConnectionError as e:
                 print(e.args)
                 print(e)
 
